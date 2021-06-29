@@ -42,6 +42,10 @@ stormCloudGroupClass.spawnTimerMax = stormCloudGroupClass.lifetime / stormCloudG
 
 local circleSprite = nil
 
+local rtsCameraCircleCount = 8
+local rtsCameraCircleMaxSize = 40
+local rtsCameraActive = GetBool("level.rtsCameraActive") or false
+
 function init()
 	saveFileInit()
 	--menu_init()
@@ -54,6 +58,7 @@ end
 
 function tick(dt)
 	--menu_tick(dt)
+	rtsCameraActive = GetBool("level.rtsCameraActive") or false
 	
 	handleAllStormCloudGroups(dt)
 	
@@ -140,10 +145,13 @@ function generateStrikeOffsets(cloud, endPos)
 		
 		newOffset[2] = (i + 1) * -2
 		
-		cloud.strikeOffsets[i] = VecAdd(newOffset, cloud.pos)
+		local currStrikeOffset = VecAdd(newOffset, cloud.pos)
+		local extraLength = math.random(0, 1)
+		
+		cloud.strikeOffsets[i] = {currStrikeOffset, extraLength}
 	end
 	
-	cloud.strikeOffsets[points] = endPos
+	cloud.strikeOffsets[points] = {endPos, 0}
 end
 
 -- Object handlers
@@ -240,7 +248,7 @@ end
 function spawnCloudParticles(cloud)
 	local cloudLifetime = cloud.lifetime
 	
-	if math.random(0, cloudClass.lifetime) < cloudLifetime then
+	if math.random(0, cloudClass.lifetime) > cloudLifetime * 2 then
 		return
 	end
 	
@@ -256,12 +264,25 @@ end
 
 function renderReticle(pos, normal)
 	local spritePos = VecAdd(pos, VecScale(normal, 0.1))
-	local spriteRot = QuatLookAt(pos, VecAdd(pos, normal))
+	local spriteRot = nil
+	
+	if rtsCameraActive then
+		spriteRot = QuatLookAt(pos, VecAdd(pos, Vec(0, 1, 0)))
+	else
+		spriteRot = QuatLookAt(pos, VecAdd(pos, normal))
+	end
+	
 	local spriteTransform = Transform(spritePos, spriteRot)
 	
-	--DrawSprite(handle, transform, width, height, [r], [g], [b], [a], [depthTest], [additive])
-	DrawSprite(circleSprite, spriteTransform, 2.5, 2.5, 0.5, 0, 0, 0.5, false, false)
-	DrawSprite(circleSprite, spriteTransform, 2.5, 2.5, 1, 0, 0, 0.5, true, false)
+	if rtsCameraActive then
+		for i = 1, rtsCameraCircleCount do
+			local circleSize = rtsCameraCircleMaxSize / rtsCameraCircleCount * i
+			DrawSprite(circleSprite, spriteTransform, circleSize, circleSize, 0.5, 0, 0, 0.5, false, false)
+		end
+	else
+		DrawSprite(circleSprite, spriteTransform, 2.5, 2.5, 0.5, 0, 0, 0.5, false, false)
+		DrawSprite(circleSprite, spriteTransform, 2.5, 2.5, 1, 0, 0, 0.5, true, false)
+	end
 end
 
 function renderStrike(cloud)
@@ -271,15 +292,21 @@ function renderStrike(cloud)
 	
 	for i = 1, #cloud.strikeOffsets do
 		local prevPoint = nil
-		local currPoint = cloud.strikeOffsets[i]
+		local currStrike = cloud.strikeOffsets[i]
+		local currPoint = currStrike[1]
+		local currOffset = currStrike[2]
 		
 		if i == 1 then
 			prevPoint = cloud.pos
 		else
-			prevPoint = cloud.strikeOffsets[i - 1]
+			prevPoint = cloud.strikeOffsets[i - 1][1]
 		end
 		
-		DrawLine(prevPoint, currPoint, 1, 1, 1, cloud.lifetime / cloudClass.lifetime)
+		local dirToCurr = VecDir(prevPoint, currPoint)
+		
+		local extraLength = VecScale(dirToCurr, currOffset)
+		
+		DrawLine(prevPoint, VecAdd(extraLength, currPoint), 1, 1, 1, cloud.lifetime / 2 / cloudClass.lifetime)
 	end
 end
 
