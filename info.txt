@@ -1,0 +1,4 @@
+name = Weather Machine
+author = NLferdiNL
+description = Weather Machine from the CnC series.
+tags = Gameplay
