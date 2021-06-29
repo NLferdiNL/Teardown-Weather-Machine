@@ -6,8 +6,8 @@
 #include "datascripts/inputList.lua"
 
 local stormCloudGroupClass = {
-	lifetime = 5,
-	cloudSpawnCount = 25,
+	lifetime = 10,
+	cloudSpawnCount = 35,
 	spawnTimerMax = 20 / 10,
 	spawnTimer = 0,
 	pos = nil,
@@ -31,12 +31,18 @@ local stormCloudIndex = 1
 local stormCloudsMaxIndex = 5
 local stormCloudHeight = 18
 
+local strikesToUiSound = 0
+
 local justPlacedTimer = 0
 local justPlacedTimerMax = 2
-local justPlacedPos = nil
-local justPlacedUiCircleMaxSize = 20
+--local justPlacedPos = nil
+--local justPlacedUiCircleMaxSize = 20
+
+local toolSelected = false
 
 local announcer_storm_created_sfx = "snd/warning_lightning_storm_created.ogg"
+local rumbleSounds = 4
+local rumbleSoundsIndex = 1
 
 stormCloudGroupClass.spawnTimerMax = stormCloudGroupClass.lifetime / stormCloudGroupClass.cloudSpawnCount
 
@@ -51,6 +57,14 @@ function init()
 	--menu_init()
 	
 	circleSprite = LoadSprite("sprites/circle.png")
+	
+	--[[local loadedRumbleSounds = {}
+	
+	for i = 1, rumbleSounds do
+		loadedRumbleSounds[i] =  LoadSound("snd/rumble0" .. i .. ".ogg")
+	end
+	
+	rumbleSounds = loadedRumbleSounds]]--
 	
 	RegisterTool("weathermachine", "Weather Machine", "MOD/vox/tool.vox")
 	SetBool("game.tool.weathermachine.enabled", true)
@@ -98,12 +112,23 @@ function draw(dt)
 
 	drawUI(dt)
 	
+	for i = 1, strikesToUiSound do
+		local soundId = rumbleSoundsIndex
+		local soundPath = "snd/rumble0" .. soundId .. ".ogg"
+		
+		rumbleSoundsIndex = (rumbleSoundsIndex % rumbleSounds) + 1
+		
+		UiSound(soundPath, 2)
+	end
+	
+	strikesToUiSound = 0
+	
 	if GetString("game.player.tool") ~= "weathermachine" then
 		return
 	end
 	
 	if InputPressed("usetool") and justPlacedTimer > 0 then
-		UiSound(announcer_storm_created_sfx)
+		UiSound(announcer_storm_created_sfx, 3)
 	end
 	
 	local justPlacedCirclePos = UiWorldToPixel(justPlacedPos)
@@ -193,24 +218,20 @@ end
 function handleAllClouds(dt, stormCloudGroup)
 	setupCloudParticle()
 	
-	local old = #stormCloudGroup.clouds + 0
-	
-	
 	for i = #stormCloudGroup.clouds, 1, -1 do
 		local currentCloud = stormCloudGroup.clouds[i]
 		
 		if currentCloud ~= nil then
 			if currentCloud.lifetime > 0 then
 				currentCloud.lifetime = currentCloud.lifetime - dt
+				spawnCloudParticles(currentCloud)
 			end
 			
 			if currentCloud.lifetime < 0 and not currentCloud.struck then
 				currentCloud.struck = true
 				currentCloud.lifetime = currentCloud.strikeLifetime
-				local hitPoint = strikeFromCloud(currentCloud)
+				local hitPoint = strikeFromCloud(currentCloud, i)
 				generateStrikeOffsets(currentCloud, hitPoint)
-			elseif currentCloud.lifetime > 0 and not currentCloud.struck then
-				spawnCloudParticles(currentCloud)
 			elseif currentCloud.lifetime > 0 and currentCloud.struck then
 				renderStrike(currentCloud)
 			elseif currentCloud.lifetime <= 0 and currentCloud.struck and currentCloud.active then
@@ -228,13 +249,21 @@ end
 function setupCloudParticle()
 	ParticleReset()
 	ParticleType("smoke")
+	ParticleRadius(1)
 end
 
-function strikeFromCloud(cloud)
+function strikeFromCloud(cloud, cloudId)
 	local cloudPos = cloud.pos
 	local strikeDir = Vec(0, -1, 0)
 	
 	local hit, hitPoint = raycast(cloudPos, strikeDir)
+	
+	--local soundHandle = rumbleSounds[math.random(1, #rumbleSounds)]
+	
+	--PlaySound(cloud.pos, soundHandle, 50)
+	if cloudId % 2 == 0 then
+		strikesToUiSound = strikesToUiSound + 1
+	end
 	
 	if hit then
 		Explosion(hitPoint, cloud.strikePower)
@@ -248,16 +277,14 @@ end
 function spawnCloudParticles(cloud)
 	local cloudLifetime = cloud.lifetime
 	
-	if math.random(0, cloudClass.lifetime) > cloudLifetime * 2 then
-		return
+	for i = 1, math.ceil(cloudClass.lifetime - cloudLifetime) do
+		local offset = rndVec(2)
+		
+		offset[1] = offset[2] * 2
+		offset[2] = math.abs(offset[2] / 2)
+		
+		SpawnParticle(VecAdd(cloud.pos, offset), Vec(0, 0, 0), 5)
 	end
-	
-	local offset = rndVec(2)
-	
-	offset[1] = offset[2] * 2
-	offset[2] = math.abs(offset[2] / 2)
-	
-	SpawnParticle(VecAdd(cloud.pos, offset), Vec(0, 0, 0), 2)
 end
 
 -- Sprite functions
@@ -306,7 +333,7 @@ function renderStrike(cloud)
 		
 		local extraLength = VecScale(dirToCurr, currOffset)
 		
-		DrawLine(prevPoint, VecAdd(extraLength, currPoint), 1, 1, 1, cloud.lifetime / 2 / cloudClass.lifetime)
+		DrawLine(prevPoint, VecAdd(extraLength, currPoint), 0.8, 0.8, 1, cloud.lifetime / 2 / cloudClass.lifetime)
 	end
 end
 
